@@ -8,7 +8,25 @@ case class Atom(label: String) extends Syntax
 case class Variable(label: String) extends Syntax
 
 case class PInteger(i: Int) extends Syntax
+
 case class PList(elems: Seq[Syntax]) extends Syntax
+
+sealed trait BinElem extends Syntax
+/**
+  * A binary variable expression with an optional bit width like Erlang.  The width here is
+  * the count in bytes whereas in source you would give number of bits (currently must be divisible
+  * by 8).  E.g. <<MyVar/32>> is BinVar(Variable("MyVar"), 4)
+  */
+case class BinVar(v: Variable, width: Int) extends BinElem
+/**
+  * This is obviously a bit verbose for just an integer representation of a byte but I wanted to keep
+  * binary lists completely isolated in terms of their definition for now (as opposed to having
+  * Binlist(elems: Seq[Syntax]) ).
+  */
+case class BinByte(b: Int) extends BinElem
+
+case class BinList(elems: Seq[BinElem]) extends Syntax
+
 case class Fact(predicate: Syntax, children: Seq[Syntax]) extends Syntax
 
 case class Binding(v: Variable, s: Syntax)
@@ -24,6 +42,21 @@ object PredicateParser extends RegexParsers {
     case "[" ~ elems ~ "]" => PList(elems)
   }
 
+
+  def byte: Parser[BinByte] = """(\d)+""".r flatMap {
+    case i if i.toInt < 256 && i.toInt > -1 => success(BinByte(i.toInt))
+    case i => failure("Bytes must be between 0 and 255")
+  }
+
+  def binVar: Parser[BinVar] = variable ~ opt("/" ~ """(\d)+""".r) ^^ {
+    case v ~ Some("/" ~ width) if width.toInt % 8 == 0 => BinVar(v, width.toInt / 8)
+    case v ~ None => BinVar(v, 1)
+  }
+
+  def binList: Parser[BinList] = "<<" ~ repsep((byte | binVar), ",") ~ ">>" ^^ {
+    case "<<" ~ binElems ~ ">>" => BinList(binElems)
+  }
+
   def fact: Parser[Fact] = (atom | variable) ~ "(" ~ repsep(element, ",") ~ ")" ^^ { 
     case pred ~ "(" ~ facts ~ ")" => Fact(pred, facts)
   }
@@ -36,7 +69,7 @@ object PredicateParser extends RegexParsers {
     case sig ~ "->" ~ Some(lr) ~ body => Func(sig, lr, body)
   }
 
-  def element = (fact | atom | variable | integer | list)
+  def element = (fact | atom | variable | integer | list | binList)
 
   def parseFact(expr: String) = parseAll(fact, expr)
   def parseKnowledgeBase(source: String) = parseAll(rep(func | element), source)
