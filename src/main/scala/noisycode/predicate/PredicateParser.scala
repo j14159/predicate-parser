@@ -17,7 +17,7 @@ sealed trait BinElem extends Syntax
   * the count in bytes whereas in source you would give number of bits (currently must be divisible
   * by 8).  E.g. <<MyVar/32>> is BinVar(Variable("MyVar"), 4)
   */
-case class BinVar(v: Variable, width: Int) extends BinElem
+case class BinVar(v: Variable, width: Option[Int]) extends BinElem
 /**
   * This is obviously a bit verbose for just an integer representation of a byte but I wanted to keep
   * binary lists completely isolated in terms of their definition for now (as opposed to having
@@ -49,8 +49,8 @@ object PredicateParser extends RegexParsers {
   }
 
   def binVar: Parser[BinVar] = variable ~ opt("/" ~ """(\d)+""".r) ^^ {
-    case v ~ Some("/" ~ width) if width.toInt % 8 == 0 => BinVar(v, width.toInt / 8)
-    case v ~ None => BinVar(v, 1)
+    case v ~ Some("/" ~ width) if width.toInt % 8 == 0 => BinVar(v, Some(width.toInt / 8))
+    case v ~ None => BinVar(v, None)
   }
 
   def binList: Parser[BinList] = "<<" ~ repsep((byte | binVar), ",") ~ ">>" ^^ {
@@ -72,5 +72,6 @@ object PredicateParser extends RegexParsers {
   def element = (fact | atom | variable | integer | list | binList)
 
   def parseFact(expr: String) = parseAll(fact, expr)
+  def parseElem(expr: String) = parseAll(element, expr)
   def parseKnowledgeBase(source: String) = parseAll(rep(func | element), source)
 }
