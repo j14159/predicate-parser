@@ -9,7 +9,10 @@ case class Variable(label: String) extends Syntax
 
 case class PInteger(i: Int) extends Syntax
 
-case class PList(elems: Seq[Syntax]) extends Syntax
+sealed trait PConsList extends Syntax
+
+case object PNil extends PConsList
+case class PCons(head: Syntax, tail: Syntax) extends PConsList
 
 sealed trait BinElem extends Syntax
 /**
@@ -38,10 +41,18 @@ object PredicateParser extends RegexParsers {
   def variable: Parser[Variable] = """[A-Z_][a-zA-Z0-9_]*""".r ^^ { v => Variable(v) }
   def atom: Parser[Atom] = """[a-z][a-zA-Z0-9_]*""".r ^^ { a => Atom(a) }
 
-  def list: Parser[PList] = "[" ~ rep(element) ~ "]" ^^ {
-    case "[" ~ elems ~ "]" => PList(elems)
+  def cons: Parser[PConsList] = "[" ~ element ~ "|" ~ element ~ "]" ^^ {
+    case "[" ~ head ~ "|" ~ tail ~ "]" => PCons(head, tail)
   }
 
+  def seqToPCons(l: Seq[Syntax], memo: PConsList = PNil): PConsList = l match {
+    case Nil => memo
+    case h :: t => seqToPCons(t, PCons(h, memo))
+  }
+
+  def literalList: Parser[PConsList] = "[" ~ repsep(element, ",") ~ "]" ^^ {
+    case "[" ~ elems ~ "]" => seqToPCons(elems)
+  }
 
   def byte: Parser[BinByte] = """(\d)+""".r flatMap {
     case i if i.toInt < 256 && i.toInt > -1 => success(BinByte(i.toInt))
@@ -69,7 +80,7 @@ object PredicateParser extends RegexParsers {
     case sig ~ "->" ~ Some(lr) ~ body => Func(sig, lr, body)
   }
 
-  def element = (fact | atom | variable | integer | list | binList)
+  def element = (fact | atom | variable | integer | literalList | cons | binList)
 
   def parseFact(expr: String) = parseAll(fact, expr)
   def parseElem(expr: String) = parseAll(element, expr)
