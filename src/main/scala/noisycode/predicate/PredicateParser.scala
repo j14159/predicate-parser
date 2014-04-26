@@ -9,10 +9,10 @@ case class Variable(label: String) extends Syntax
 
 case class PInteger(i: Int) extends Syntax
 
-sealed trait PConsList extends Syntax
+sealed trait PConsList extends Syntax 
 
 case object PNil extends PConsList
-case class PCons(head: Syntax, tail: Syntax) extends PConsList
+case class PCons(head: Syntax, tail: PConsList) extends PConsList
 
 sealed trait BinElem extends Syntax
 /**
@@ -42,7 +42,7 @@ object PredicateParser extends RegexParsers {
   def atom: Parser[Atom] = """[a-z][a-zA-Z0-9_]*""".r ^^ { a => Atom(a) }
 
   def cons: Parser[PConsList] = "[" ~ element ~ "|" ~ element ~ "]" ^^ {
-    case "[" ~ head ~ "|" ~ tail ~ "]" => PCons(head, tail)
+    case "[" ~ head ~ "|" ~ tail ~ "]" => PCons(head, PCons(tail, PNil))
   }
 
   def seqToPCons(l: Seq[Syntax], memo: PConsList = PNil): PConsList = l match {
@@ -51,7 +51,7 @@ object PredicateParser extends RegexParsers {
   }
 
   def literalList: Parser[PConsList] = "[" ~ repsep(element, ",") ~ "]" ^^ {
-    case "[" ~ elems ~ "]" => seqToPCons(elems)
+    case "[" ~ elems ~ "]" => seqToPCons(elems.reverse)
   }
 
   def byte: Parser[BinByte] = """(\d)+""".r flatMap {

@@ -18,6 +18,7 @@ object Matcher {
       case (Variable(a), syntax) => Some(Matched(orig, bindings + (a -> syntax)))
       case (Atom(a), Atom(b)) if a == b => Some(Matched(orig, bindings))
       case (a: BinList, b: BinList) => checkBin(a, b)
+      case (a: PConsList, b: PConsList) => checkPCons(a, b)
       case (Fact(a, left), Fact(b, right)) if left.length == right.length =>
         check(a, b, orig, bindings)
           .flatMap {
@@ -38,6 +39,10 @@ object Matcher {
     }
   }
 
+  //minor helper to handle "_" throaway variable and binding:
+  def bind(varName: String, toBind: Syntax, existing: Map[String, Syntax]) =
+    if(varName != "_") existing + (varName -> toBind) else existing
+
   def checkBin(q: BinList, fromKb: BinList): Option[Matched] = 
     checkBin(q.elems, fromKb.elems, fromKb.elems, Map())
 
@@ -46,9 +51,6 @@ object Matcher {
     * Probably could also handle bindings much better, big TODO.
     */
   def checkBin(q: Seq[BinElem], fromKb: Seq[BinElem], orig: Seq[BinElem], bindings: Map[String, Syntax]): Option[Matched] = {
-    //minor helper to handle "_" throaway variable and binding:
-    def bind(varName: String, toBind: Syntax, existing: Map[String, Syntax]) = 
-      if(varName != "_") existing + (varName -> toBind) else existing
 
     (q, fromKb) match {
       //base case:
@@ -81,5 +83,18 @@ object Matcher {
         checkBin(left, right, orig, bindings)
       case _ => None
     }
+  }
+
+  def checkPCons(q: PConsList, fromKb: PConsList): Option[Matched] = 
+    checkPCons(q, fromKb, fromKb, Map())
+
+  def checkPCons(q: PConsList, fromKb: PConsList, orig: PConsList, bindings: Map[String, Syntax]): Option[Matched] = (q, fromKb) match {
+    //catches PNil and any matching end syntax:
+    case (a, b) if a == b => Some(Matched(orig, bindings))
+    case (PCons(a, left), PCons(b, right)) if a == b => checkPCons(left, right, orig, bindings)
+    //catches a variable binding to the tail:
+    case (PCons(Variable(a), PNil), all @ PCons(_, _)) => Some(Matched(orig, bind(a, all, bindings)))
+    case (PCons(Variable(a), left), PCons(b, right)) => checkPCons(left, right, orig, bind(a, b, bindings))
+    case _ => None
   }
 }
